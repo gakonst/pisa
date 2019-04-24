@@ -1,52 +1,79 @@
-import { ethers } from "ethers";
+import { IAppointment, IEthereumAppointment } from "./dataEntities";
+import { AppointmentSubscriber } from "./watcher/appointmentSubscriber";
+import { EventObserver } from "./watcher/eventObserver";
 
-abstract class BlockCommand {
-    blockNumber: number;
-    execute: () => {}
-    undo: () => {}
+enum CommandType {
+    AddAppointment = 1
 }
 
-class ReorgManager {
-    constructor(private store: CommandStore, private undoManager: UndoManager, private readonly provider: ethers.providers.BaseProvider) {
+export class CommandStore {
+    private commandsById: {
+        [id: string]: Command;
+    } = {};
 
+    add(command: Command) {
+        this.commandsById[command.id] = command;
     }
-
-    execute(command: BlockCommand) {
-        this.undoManager.addCommand(command);
-    }
-
-    rollBackTo(blockNumber: number) {
-        const commands = this.store.getCommandsSinceBlock(blockNumber);
-        this.undoManager.undoCommmands(commands)
-
-        // reset the provider
-        this.provider.resetEventsBlock(blockNumber);
+    remove(command: Command) {
+        delete this.commandsById[command.id];
     }
 }
 
-class CommandStore {
-    add(command: BlockCommand) {}
-    remove(command: BlockCommand) {}
-    getCommandsSinceBlock(block: number): BlockCommand[] {
-        return []
+abstract class Command {
+    constructor(
+        public readonly id: string,
+        public readonly blockNumber: number,
+        public readonly blockHash,
+        public readonly type: CommandType
+    ) {}
+
+    public abstract execute(): void;
+}
+
+export class AddAppointmentCommand extends Command {
+    constructor(
+        blockNumber: number,
+        blockHash: string,
+        private readonly appointment: IEthereumAppointment,
+        private readonly appointmentSubscriber: AppointmentSubscriber,
+        private readonly eventObserver: EventObserver
+
+    ) {
+        super(appointment.id, blockNumber, blockHash, CommandType.AddAppointment);
+    }
+
+    public execute(): void {
+        // remove the subscription, this is blocking code so we don't have to worry that an event will be observed
+        // whilst we remove these listeners and add new ones
+        const filter = this.appointment.getEventFilter();
+        this.appointmentSubscriber.unsubscribeAll(filter);
+
+        // subscribe the listener
+        const listener = async (...args: any[]) => await this.eventObserver.observe(this.appointment, args);
+        this.appointmentSubscriber.subscribeOnce(this.appointment.id, filter, listener);
     }
 }
 
+abstract class UndoableCommand extends Command {
+    public abstract undo(): void;
+}
 
-class UndoManager {
-    constructor(private store: CommandStore) {}
+export class ExecutionEngine {
+    constructor(private readonly store: CommandStore) {}
 
-    addCommand(command: BlockCommand) {
-        command.execute()
-        this.store.add(command)
+    public execute(command: Command) {
+        this.store.add(command);
+        command.execute();
+
+        //TODO:113: errors?
     }
 
-    undoCommand(command: BlockCommand){
-        command.undo()
-        this.store.remove(command)
-    }
+    public rollback(commands: UndoableCommand[]) {
+        commands.forEach(c => {
+            c.undo();
+            this.store.remove(c);
+        });
 
-    undoCommmands(commands: BlockCommand[]){
-        commands.forEach(c => this.undoCommand(c));
+        //TODO:113: errors?
     }
 }

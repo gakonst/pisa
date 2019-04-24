@@ -7,6 +7,7 @@ import { MemoryAppointmentStore, Watcher } from "../../../src/watcher";
 import { KitsuneAppointment } from "../../../src/integrations/kitsune";
 import { ethers } from "ethers";
 import { AppointmentSubscriber } from "../../../src/watcher/appointmentSubscriber";
+import { ExecutionEngine, CommandStore } from "../../../src/undo";
 
 describe("Watcher", () => {
     // appointment mocks
@@ -72,8 +73,10 @@ describe("Watcher", () => {
         resetCalls(mockedObserver);
     });
 
+    const executionEngine = new ExecutionEngine(new CommandStore());
+
     it("add appointment updates store and subscriptions", async () => {
-        const watcher = new Watcher(observer, appointmentSubscriber, store);
+        const watcher = new Watcher(observer, appointmentSubscriber, store, executionEngine);
 
         assert.strictEqual(await watcher.addAppointment(appointmentCanBeUpdated), true);
 
@@ -89,7 +92,7 @@ describe("Watcher", () => {
     });
 
     it("add appointment without update does not update subscriptions and returns false", async () => {
-        const watcher = new Watcher(observer, appointmentSubscriber, store);
+        const watcher = new Watcher(observer, appointmentSubscriber, store, executionEngine);
 
         assert.strictEqual(await watcher.addAppointment(appointmentNotUpdated), false);
 
@@ -104,7 +107,7 @@ describe("Watcher", () => {
         ).never();
     });
     it("add appointment not passed inspection throws error", async () => {
-        const watcher = new Watcher(observer, appointmentSubscriber, store);
+        const watcher = new Watcher(observer, appointmentSubscriber, store, executionEngine);
 
         try {
             await watcher.addAppointment(appointmentNotInspected);
@@ -122,7 +125,7 @@ describe("Watcher", () => {
         }
     });
     it("add appointment throws error when update store throws error", async () => {
-        const watcher = new Watcher(observer, appointmentSubscriber, store);
+        const watcher = new Watcher(observer, appointmentSubscriber, store, executionEngine);
 
         try {
             await watcher.addAppointment(appointmentErrorUpdate);
@@ -140,7 +143,7 @@ describe("Watcher", () => {
         }
     });
     it("add appointment throws error when subscribe unsubscribeall throws error", async () => {
-        const watcher = new Watcher(observer, appointmentSubscriber, store);
+        const watcher = new Watcher(observer, appointmentSubscriber, store, executionEngine);
 
         try {
             await watcher.addAppointment(appointmentErrorUnsubscribe);
@@ -158,7 +161,7 @@ describe("Watcher", () => {
         }
     });
     it("add appointment throws error when subscriber once throw error", async () => {
-        const watcher = new Watcher(observer, appointmentSubscriber, store);
+        const watcher = new Watcher(observer, appointmentSubscriber, store, executionEngine);
 
         try {
             await watcher.addAppointment(appointmentErrorSubscribeOnce);

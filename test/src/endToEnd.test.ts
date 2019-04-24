@@ -9,6 +9,7 @@ import { EthereumResponderManager } from "../../src/responder";
 import { MemoryAppointmentStore } from "../../src/watcher/store";
 import { EventObserver } from "../../src/watcher/eventObserver";
 import { AppointmentSubscriber } from "../../src/watcher/appointmentSubscriber";
+import { CommandStore, ExecutionEngine } from "../../src/undo";
 const ganache = Ganache.provider({
     mnemonic: "myth like bonus scare over problem client lizard pioneer submit female collect"
 });
@@ -71,7 +72,8 @@ describe("End to end", () => {
         const watcher = new Watcher(
             new EventObserver(responderManager, store),
             new AppointmentSubscriber(provider),
-            store
+            store,
+            new ExecutionEngine(new CommandStore())
         );
         const player0Contract = channelContract.connect(provider.getSigner(player0));
 

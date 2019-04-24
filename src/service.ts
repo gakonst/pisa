@@ -14,6 +14,7 @@ import { EthereumResponderManager } from "./responder";
 import { EventObserver } from "./watcher/eventObserver";
 import { AppointmentStoreGarbageCollector } from "./watcher/garbageCollector";
 import { AppointmentSubscriber } from "./watcher/appointmentSubscriber";
+import { ExecutionEngine, CommandStore } from "./undo";
 
 /**
  * Hosts a PISA service at the endpoint.
@@ -52,7 +53,9 @@ export class PisaService {
         const ethereumResponderManager = new EthereumResponderManager(wallet);
         const eventObserver = new EventObserver(ethereumResponderManager, store);
         const appointmentSubscriber = new AppointmentSubscriber(delayedProvider);
-        const watcher = new Watcher(eventObserver, appointmentSubscriber, store);
+        const commandStore = new CommandStore();
+        const executionEngine = new ExecutionEngine(commandStore);
+        const watcher = new Watcher(eventObserver, appointmentSubscriber, store, executionEngine);
         const tower = new PisaTower(provider, watcher, [Raiden, Kitsune]);
 
         // start gc

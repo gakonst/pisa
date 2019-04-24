@@ -4,6 +4,7 @@ import { EventObserver } from "./eventObserver";
 import { ConfigurationError } from "../dataEntities/errors";
 import { AppointmentSubscriber } from "./appointmentSubscriber";
 import { IAppointmentStore } from "./store";
+import { AddAppointmentCommand, ExecutionEngine } from "../undo";
 
 /**
  * Watches the chain for events related to the supplied appointments. When an event is noticed data is forwarded to the
@@ -19,7 +20,9 @@ export class Watcher {
     public constructor(
         private readonly eventObserver: EventObserver,
         private readonly appointmentSubscriber: AppointmentSubscriber,
-        private readonly store: IAppointmentStore
+        private readonly store: IAppointmentStore,
+        private readonly executionEngine: ExecutionEngine
+
     ) {}
 
     // there are three separate processes that can run concurrently as part of the watcher
@@ -59,14 +62,11 @@ export class Watcher {
             // update this appointment in the store
             const updated = await this.store.addOrUpdateByStateLocator(appointment);
             if (updated) {
-                // remove the subscription, this is blocking code so we don't have to worry that an event will be observed
-                // whilst we remove these listeners and add new ones
-                const filter = appointment.getEventFilter();
-                this.appointmentSubscriber.unsubscribeAll(filter);
-
-                // subscribe the listener
-                const listener = async (...args: any[]) => await this.eventObserver.observe(appointment, args);
-                this.appointmentSubscriber.subscribeOnce(appointment.id, filter, listener);
+                // current block + hash
+                const command: AddAppointmentCommand  = new AddAppointmentCommand(
+                    1, "", appointment, this.appointmentSubscriber, this.eventObserver
+                )
+                this.executionEngine.execute(command);
             }
 
             return updated;
