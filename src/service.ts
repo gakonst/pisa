@@ -14,7 +14,8 @@ import { EthereumResponderManager } from "./responder";
 import { EventObserver } from "./watcher/eventObserver";
 import { AppointmentStoreGarbageCollector } from "./watcher/garbageCollector";
 import { AppointmentSubscriber } from "./watcher/appointmentSubscriber";
-import { ExecutionEngine, CommandStore } from "./undo";
+import { ExecutionEngine, CommandStore, ActionManager } from "./undo";
+import { BlockCacher } from "./utils/ethers";
 
 /**
  * Hosts a PISA service at the endpoint.
@@ -22,6 +23,7 @@ import { ExecutionEngine, CommandStore } from "./undo";
 export class PisaService {
     private readonly server: Server;
     private readonly garbageCollector: AppointmentStoreGarbageCollector;
+    private readonly blockCacher: BlockCacher;
 
     /**
      *
@@ -48,14 +50,23 @@ export class PisaService {
             next();
         });
 
+        this.blockCacher = new BlockCacher(provider);
+        this.blockCacher.start();
+
+        const commandStore = new CommandStore();
+        const executionEngine = new ExecutionEngine(commandStore);
+
         // dependencies
         const store = new MemoryAppointmentStore();
         const ethereumResponderManager = new EthereumResponderManager(wallet);
-        const eventObserver = new EventObserver(ethereumResponderManager, store);
         const appointmentSubscriber = new AppointmentSubscriber(delayedProvider);
-        const commandStore = new CommandStore();
-        const executionEngine = new ExecutionEngine(commandStore);
-        const watcher = new Watcher(eventObserver, appointmentSubscriber, store, executionEngine);
+        const actionManager = new ActionManager(
+            executionEngine,
+            appointmentSubscriber,
+            ethereumResponderManager,
+            store
+        );
+        const watcher = new Watcher(store, actionManager, this.blockCacher);
         const tower = new PisaTower(provider, watcher, [Raiden, Kitsune]);
 
         // start gc
@@ -105,6 +116,7 @@ export class PisaService {
     public stop() {
         if (!this.closed) {
             this.garbageCollector.stop();
+            this.blockCacher.stop();
             this.server.close(logger.info(`PISA shutdown.`));
             this.closed = true;
         }

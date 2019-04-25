@@ -5,6 +5,7 @@ import { EventObserver } from "../../../src/watcher/eventObserver";
 import { EthereumResponderManager } from "../../../src/responder";
 import { MemoryAppointmentStore } from "../../../src/watcher";
 import { KitsuneAppointment } from "../../../src/integrations/kitsune";
+import { ethers } from "ethers";
 
 describe("EventObserver", () => {
     // abstract mockito mock doesn't seem to work...
@@ -43,7 +44,7 @@ describe("EventObserver", () => {
 
     it("observe succussfully responds and updates store", () => {
         const eventObserver = new EventObserver(responderInstance, storeInstance);
-        eventObserver.observe(appointmentInstance, []);
+        eventObserver.observe(appointmentInstance, {} as ethers.Event);
 
         // respond and remove were called in that order
         verify(mockedResponder.respond(appointmentInstance)).once();
@@ -53,7 +54,8 @@ describe("EventObserver", () => {
 
     it("observe doesnt propogate errors from responder", () => {
         const eventObserver = new EventObserver(responderInstanceThrow, storeInstance);
-        eventObserver.observe(appointmentInstance, []);
+        // TODO: update these tests, and put a proper 'event' in
+        eventObserver.observe(appointmentInstance, {} as ethers.Event);
 
         // respond and remove were called in that order
         verify(mockedResponderThatThrows.respond(appointmentInstance)).once();
@@ -62,7 +64,7 @@ describe("EventObserver", () => {
 
     it("observe doesnt propogate errors from store", () => {
         const eventObserver = new EventObserver(responderInstance, storeInstanceThrow);
-        eventObserver.observe(appointmentInstance, []);
+        eventObserver.observe(appointmentInstance, {} as ethers.Event);
 
         // respond and remove were called in that order
         verify(mockedResponder.respond(appointmentInstance)).once();

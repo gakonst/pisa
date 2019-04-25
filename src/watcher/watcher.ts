@@ -4,7 +4,9 @@ import { EventObserver } from "./eventObserver";
 import { ConfigurationError } from "../dataEntities/errors";
 import { AppointmentSubscriber } from "./appointmentSubscriber";
 import { IAppointmentStore } from "./store";
-import { AddAppointmentCommand, ExecutionEngine } from "../undo";
+import { AddAppointmentCommand, ExecutionEngine, ActionManager, AppointmentAction } from "../undo";
+import { BlockCacher } from "../utils/ethers";
+import { EthereumResponderManager } from "../responder";
 
 /**
  * Watches the chain for events related to the supplied appointments. When an event is noticed data is forwarded to the
@@ -18,11 +20,9 @@ export class Watcher {
      * acted upon, that is the responsibility of the responder.
      */
     public constructor(
-        private readonly eventObserver: EventObserver,
-        private readonly appointmentSubscriber: AppointmentSubscriber,
         private readonly store: IAppointmentStore,
-        private readonly executionEngine: ExecutionEngine
-
+        private readonly actionManager: ActionManager,
+        private readonly blockCacher: BlockCacher
     ) {}
 
     // there are three separate processes that can run concurrently as part of the watcher
@@ -63,10 +63,13 @@ export class Watcher {
             const updated = await this.store.addOrUpdateByStateLocator(appointment);
             if (updated) {
                 // current block + hash
-                const command: AddAppointmentCommand  = new AddAppointmentCommand(
-                    1, "", appointment, this.appointmentSubscriber, this.eventObserver
-                )
-                this.executionEngine.execute(command);
+                const appointmentAction = new AppointmentAction(
+                    this.blockCacher.blockNumber,
+                    this.blockCacher.blockHash,
+                    appointment
+                );
+
+                this.actionManager.add(appointmentAction);
             }
 
             return updated;

@@ -9,7 +9,8 @@ import { EthereumResponderManager } from "../../src/responder";
 import { MemoryAppointmentStore } from "../../src/watcher/store";
 import { EventObserver } from "../../src/watcher/eventObserver";
 import { AppointmentSubscriber } from "../../src/watcher/appointmentSubscriber";
-import { CommandStore, ExecutionEngine } from "../../src/undo";
+import { CommandStore, ExecutionEngine, ActionManager } from "../../src/undo";
+import { BlockCacher } from "../../src/utils/ethers";
 const ganache = Ganache.provider({
     mnemonic: "myth like bonus scare over problem client lizard pioneer submit female collect"
 });
@@ -66,15 +67,20 @@ describe("End to end", () => {
         });
         await inspector.inspectAndPass(appointment);
 
+        // TODO:113: remove this or mock
+        const blockCacher = new BlockCacher(provider);
+        blockCacher.start();
+
         // 2. pass this appointment to the watcher
-        const responderManager = new EthereumResponderManager(provider.getSigner(pisaAccount));
+
         const store = new MemoryAppointmentStore();
-        const watcher = new Watcher(
-            new EventObserver(responderManager, store),
+        const actionManager = new ActionManager(
+            new ExecutionEngine(new CommandStore()),
             new AppointmentSubscriber(provider),
-            store,
-            new ExecutionEngine(new CommandStore())
+            new EthereumResponderManager(provider.getSigner(pisaAccount)),
+            store
         );
+        const watcher = new Watcher(store, actionManager, blockCacher);
         const player0Contract = channelContract.connect(provider.getSigner(player0));
 
         await watcher.addAppointment(appointment);
@@ -82,6 +88,7 @@ describe("End to end", () => {
         // 3. Trigger a dispute
         const tx = await player0Contract.triggerDispute();
         await tx.wait();
+        blockCacher.stop();
         await wait(2000);
     }).timeout(3000);
 });
