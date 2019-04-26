@@ -5,6 +5,8 @@ import { waitForConfirmations } from "./utils/ethers";
 import { IEthereumAppointment, IEthereumResponse } from "./dataEntities/appointment";
 import logger from "./logger";
 import { TransactionResponse } from "ethers/providers";
+import { ActionManager } from "./dependencies/actionManager";
+import { RespondedAction } from "./undo";
 
 /**
  * Responsible for storing the state and managing the flow of a single response.
@@ -13,7 +15,7 @@ import { TransactionResponse } from "ethers/providers";
 //          The plan is to use them for accounting, make sure this is the case.
 export class ResponseFlow {
     private static nextId: number = 0;
-
+    public tx: ethers.providers.TransactionResponse;
     readonly id: number;
     readonly creationTimestamp: number;
 
@@ -29,11 +31,11 @@ export class ResponseFlow {
  * Represents the current state of a Response
  */
 export enum ResponseState {
-    Ready,        // initial status
-    Started,      // flow started
+    Ready, // initial status
+    Started, // flow started
     ResponseSent, // responded, but waiting for enough confirmations
-    Success,      // responded with enough confirmations
-    Failed        // response flow failed
+    Success, // responded with enough confirmations
+    Failed // response flow failed
 }
 
 /**
@@ -62,7 +64,7 @@ export abstract class Responder extends EventEmitter {
 
     // Commodity function to emit events asynchronously
     protected asyncEmit(...args: any[]) {
-        setImmediate( () => this.emit.call(this, args) );
+        setImmediate(() => this.emit.call(this, args));
     }
 
     /**
@@ -114,7 +116,9 @@ export abstract class EthereumResponder extends Responder {
     protected submitStateFunction(): Promise<TransactionResponse> {
         // form the interface so that we can serialise the args and the function name
         const abiInterface = new ethers.utils.Interface(this.ethereumResponse.contractAbi);
-        const data = abiInterface.functions[this.ethereumResponse.functionName].encode(this.ethereumResponse.functionArgs);
+        const data = abiInterface.functions[this.ethereumResponse.functionName].encode(
+            this.ethereumResponse.functionArgs
+        );
         // now create a transaction, specifying possible oher variables
         const transactionRequest = {
             to: this.ethereumResponse.contractAddress,
@@ -128,7 +132,6 @@ export abstract class EthereumResponder extends Responder {
         return this.signer.sendTransaction(transactionRequest);
     }
 }
-
 
 /* CONCRETE RESPONDER IMPLEMENTATIONS */
 
@@ -159,7 +162,6 @@ export class EthereumDedicatedResponder extends EthereumResponder {
         readonly signer: ethers.Signer,
         public readonly appointmentId: string,
         public readonly ethereumResponse: IEthereumResponse,
-
         public readonly confirmationsRequired = 40,
         private readonly maxAttempts: number = 10
     ) {
@@ -188,19 +190,30 @@ export class EthereumDedicatedResponder extends EthereumResponder {
                 const tx = await promiseTimeout(this.submitStateFunction(), 30000);
 
                 // The response has been sent, but should not be considered confirmed yet.
+                this.responseFlow.tx = tx;
                 this.responseFlow.status = ResponseState.ResponseSent;
                 this.asyncEmit(ResponderEvent.ResponseSent, this.responseFlow);
 
                 // Wait for enough confirmations before declaring success
-                const confirmationsPromise = waitForConfirmations(this.signer.provider, tx.hash, this.confirmationsRequired);
+                const confirmationsPromise = waitForConfirmations(
+                    this.signer.provider,
+                    tx.hash,
+                    this.confirmationsRequired
+                );
                 // ...but stop with error if no new blocks come for too long
                 const noNewBlockPromise = new Promise((_, reject) => {
-                    const intervalHandle = setInterval( () => {
+                    const intervalHandle = setInterval(() => {
                         // milliseconds since the last block was received (or the responder was instantiated)
                         const msSinceLastBlock = Date.now() - this.timeLastBlockReceived;
-                        if (msSinceLastBlock > 60*1000) {
-                            clearInterval(intervalHandle)
-                            reject(new NoNewBlockError(`No new block was received for ${Math.round(msSinceLastBlock/1000)} seconds; provider might be down.`));
+                        if (msSinceLastBlock > 60 * 1000) {
+                            clearInterval(intervalHandle);
+                            reject(
+                                new NoNewBlockError(
+                                    `No new block was received for ${Math.round(
+                                        msSinceLastBlock / 1000
+                                    )} seconds; provider might be down.`
+                                )
+                            );
                         }
                     }, 1000);
                 });
@@ -236,9 +249,7 @@ export class EthereumDedicatedResponder extends EthereumResponder {
 export class EthereumResponderManager {
     private responders: Set<EthereumResponder> = new Set();
 
-    constructor(private readonly signer: ethers.Signer) {
-
-    }
+    constructor(private readonly signer: ethers.Signer) {}
 
     public respond(appointment: IEthereumAppointment) {
         const ethereumResponse = appointment.getResponse();
@@ -248,7 +259,10 @@ export class EthereumResponderManager {
         responder
             .on(ResponderEvent.ResponseSent, (responseFlow: ResponseFlow) => {
                 logger.info(
-                    `Successfully responded to appointment ${appointment.id} after ${responder.attemptsDone} ${plural(responder.attemptsDone, "attempt")}.
+                    `Successfully responded to appointment ${appointment.id} after ${responder.attemptsDone} ${plural(
+                        responder.attemptsDone,
+                        "attempt"
+                    )}.
                      Waiting for enough confirmations.`
                 );
 
@@ -257,7 +271,15 @@ export class EthereumResponderManager {
             })
             .on(ResponderEvent.ResponseConfirmed, (responseFlow: ResponseFlow) => {
                 logger.info(
-                    `Successfully responded to appointment ${appointment.id} after ${responder.attemptsDone} ${plural(responder.attemptsDone, "attempt")}.`
+                    `Successfully responded to appointment ${appointment.id} after ${responder.attemptsDone} ${plural(
+                        responder.attemptsDone,
+                        "attempt"
+                    )}.`
+                );
+
+                // successful response - register this in case of re-org
+                ActionManager.theActionManager.add(
+                    new RespondedAction(appointment, responseFlow.tx.blockNumber, responseFlow.tx.blockHash)
                 );
 
                 // Should we keep inactive responders anywhere?
@@ -265,13 +287,19 @@ export class EthereumResponderManager {
             })
             .on(ResponderEvent.AttemptFailed, (responseFlow: ResponseFlow, doh) => {
                 logger.error(
-                    `Failed to respond to appointment ${appointment.id}; ${responder.attemptsDone} ${plural(responder.attemptsDone, "attempt")}.`
+                    `Failed to respond to appointment ${appointment.id}; ${responder.attemptsDone} ${plural(
+                        responder.attemptsDone,
+                        "attempt"
+                    )}.`
                 );
                 logger.error(doh);
             })
             .on(ResponderEvent.ResponseFailed, (responseFlow: ResponseFlow) => {
                 logger.error(
-                    `Failed to respond to ${appointment.id}, after ${responder.attemptsDone} ${plural(responder.attemptsDone, "attempt")}. Giving up.`
+                    `Failed to respond to ${appointment.id}, after ${responder.attemptsDone} ${plural(
+                        responder.attemptsDone,
+                        "attempt"
+                    )}. Giving up.`
                 );
 
                 // TODO: this is serious and should be escalated.

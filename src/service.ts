@@ -14,8 +14,8 @@ import { EthereumResponderManager } from "./responder";
 import { EventObserver } from "./watcher/eventObserver";
 import { AppointmentStoreGarbageCollector } from "./watcher/garbageCollector";
 import { AppointmentSubscriber } from "./watcher/appointmentSubscriber";
-import { ExecutionEngine, CommandStore, ActionManager } from "./undo";
-import { BlockCacher } from "./utils/ethers";
+import { ActionStore } from "./undo";
+import { ActionManager } from "./dependencies/actionManager";
 
 /**
  * Hosts a PISA service at the endpoint.
@@ -23,7 +23,6 @@ import { BlockCacher } from "./utils/ethers";
 export class PisaService {
     private readonly server: Server;
     private readonly garbageCollector: AppointmentStoreGarbageCollector;
-    private readonly blockCacher: BlockCacher;
 
     /**
      *
@@ -50,23 +49,15 @@ export class PisaService {
             next();
         });
 
-        this.blockCacher = new BlockCacher(provider);
-        this.blockCacher.start();
-
-        const commandStore = new CommandStore();
-        const executionEngine = new ExecutionEngine(commandStore);
-
         // dependencies
         const store = new MemoryAppointmentStore();
         const ethereumResponderManager = new EthereumResponderManager(wallet);
+        const eventObserver = new EventObserver(ethereumResponderManager, store);
         const appointmentSubscriber = new AppointmentSubscriber(delayedProvider);
-        const actionManager = new ActionManager(
-            executionEngine,
-            appointmentSubscriber,
-            ethereumResponderManager,
-            store
-        );
-        const watcher = new Watcher(store, actionManager, this.blockCacher);
+        const watcher = new Watcher(appointmentSubscriber, store);
+        const actionStore = new ActionStore();
+        ActionManager.initialise(actionStore, ethereumResponderManager, eventObserver, watcher);
+
         const tower = new PisaTower(provider, watcher, [Raiden, Kitsune]);
 
         // start gc
@@ -94,7 +85,7 @@ export class PisaService {
             } catch (doh) {
                 if (doh instanceof PublicInspectionError) this.logAndSend(400, doh.message, doh, res);
                 else if (doh instanceof PublicDataValidationError) this.logAndSend(400, doh.message, doh, res);
-                else if (doh instanceof ApplicationError) this.logAndSend(500, doh.message, doh, res);
+                else if (doh instanceof ApplicationError) this.logAndSend(500, "Internal server error.", doh, res);
                 else if (doh instanceof Error) this.logAndSend(500, "Internal server error.", doh, res);
                 else {
                     logger.error("Error: 500. \n" + inspect(doh));
@@ -116,7 +107,6 @@ export class PisaService {
     public stop() {
         if (!this.closed) {
             this.garbageCollector.stop();
-            this.blockCacher.stop();
             this.server.close(logger.info(`PISA shutdown.`));
             this.closed = true;
         }

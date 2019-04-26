@@ -7,9 +7,6 @@ import { MemoryAppointmentStore, Watcher } from "../../../src/watcher";
 import { KitsuneAppointment } from "../../../src/integrations/kitsune";
 import { ethers } from "ethers";
 import { AppointmentSubscriber } from "../../../src/watcher/appointmentSubscriber";
-import { ExecutionEngine, CommandStore, ActionManager } from "../../../src/undo";
-import { EthereumResponderManager } from "../../../src/responder";
-import { BlockCacher } from "../../../src/utils/ethers";
 
 describe("Watcher", () => {
     // appointment mocks
@@ -40,18 +37,11 @@ describe("Watcher", () => {
     const appointmentErrorUnsubscribe = createMockAppointment(appointmentErrorUnsubscribeId, errorEventFilter, true);
     const appointmentErrorSubscribeOnce = createMockAppointment(appointmentErrorSubscribeOnceId, eventFilter, true);
 
-    // TODO:113: clean up here and the blockcacher
     // observer mock
-    // const mockedObserver = mock(EventObserver);
-    // const observer = instance(mockedObserver);
-    const mockedActionManager = mock(ActionManager);
-    const actionManager = instance(mockedActionManager);
+    const mockedObserver = mock(EventObserver);
+    const observer = instance(mockedObserver);
 
-    const mockedBlockCacher = mock(BlockCacher)
-    when(mockedBlockCacher.blockHash).thenReturn("hash");
-    when(mockedBlockCacher.blockNumber).thenReturn(10);
-    const blockCacher = instance(mockedBlockCacher);
-
+    
 
     // appointment subscriber mock
     const mockedAppointmentSubscriber = mock(AppointmentSubscriber);
@@ -81,14 +71,11 @@ describe("Watcher", () => {
     afterEach(() => {
         resetCalls(mockedStore);
         resetCalls(mockedAppointmentSubscriber);
-        resetCalls(mockedActionManager);
+        resetCalls(mockedObserver);
     });
 
-//    const executionEngine = new ExecutionEngine(new CommandStore());
-//    const actionManager = new ActionManager(appointmentSubscriber, store, new EthereumResponderManager())
-
     it("add appointment updates store and subscriptions", async () => {
-        const watcher = new Watcher(store, actionManager, blockCacher);
+        const watcher = new Watcher(appointmentSubscriber, store);
 
         assert.strictEqual(await watcher.addAppointment(appointmentCanBeUpdated), true);
 
@@ -104,7 +91,7 @@ describe("Watcher", () => {
     });
 
     it("add appointment without update does not update subscriptions and returns false", async () => {
-        const watcher = new Watcher(store, actionManager, blockCacher);
+        const watcher = new Watcher(appointmentSubscriber, store);
 
         assert.strictEqual(await watcher.addAppointment(appointmentNotUpdated), false);
 
@@ -119,7 +106,7 @@ describe("Watcher", () => {
         ).never();
     });
     it("add appointment not passed inspection throws error", async () => {
-        const watcher = new Watcher(store, actionManager, blockCacher)
+        const watcher = new Watcher(appointmentSubscriber, store);
 
         try {
             await watcher.addAppointment(appointmentNotInspected);
@@ -137,7 +124,7 @@ describe("Watcher", () => {
         }
     });
     it("add appointment throws error when update store throws error", async () => {
-        const watcher = new Watcher(store, actionManager, blockCacher)
+        const watcher = new Watcher(appointmentSubscriber, store);
 
         try {
             await watcher.addAppointment(appointmentErrorUpdate);
@@ -155,7 +142,7 @@ describe("Watcher", () => {
         }
     });
     it("add appointment throws error when subscribe unsubscribeall throws error", async () => {
-        const watcher = new Watcher(store, actionManager, blockCacher)
+        const watcher = new Watcher(appointmentSubscriber, store);
 
         try {
             await watcher.addAppointment(appointmentErrorUnsubscribe);
@@ -173,7 +160,7 @@ describe("Watcher", () => {
         }
     });
     it("add appointment throws error when subscriber once throw error", async () => {
-        const watcher = new Watcher(store, actionManager, blockCacher)
+        const watcher = new Watcher(appointmentSubscriber, store);
 
         try {
             await watcher.addAppointment(appointmentErrorSubscribeOnce);

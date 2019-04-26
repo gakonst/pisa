@@ -3,14 +3,14 @@ import { Watcher } from "../../src/watcher/watcher";
 import { KitsuneInspector, KitsuneAppointment, KitsuneTools } from "../../src/integrations/kitsune";
 import { ethers, Signer } from "ethers";
 import Ganache from "ganache-core";
-import { ChannelType } from "../../src/dataEntities";
+import { ChannelType, IEthereumAppointment } from "../../src/dataEntities";
 
 import { EthereumResponderManager } from "../../src/responder";
 import { MemoryAppointmentStore } from "../../src/watcher/store";
-import { EventObserver } from "../../src/watcher/eventObserver";
 import { AppointmentSubscriber } from "../../src/watcher/appointmentSubscriber";
-import { CommandStore, ExecutionEngine, ActionManager } from "../../src/undo";
-import { BlockCacher } from "../../src/utils/ethers";
+import { ActionStore } from "../../src/undo";
+import { ActionManager } from "../../src/dependencies/actionManager";
+import { EventObserver } from "../../src/watcher/eventObserver";
 const ganache = Ganache.provider({
     mnemonic: "myth like bonus scare over problem client lizard pioneer submit female collect"
 });
@@ -67,28 +67,21 @@ describe("End to end", () => {
         });
         await inspector.inspectAndPass(appointment);
 
-        // TODO:113: remove this or mock
-        const blockCacher = new BlockCacher(provider);
-        blockCacher.start();
-
         // 2. pass this appointment to the watcher
-
         const store = new MemoryAppointmentStore();
-        const actionManager = new ActionManager(
-            new ExecutionEngine(new CommandStore()),
-            new AppointmentSubscriber(provider),
-            new EthereumResponderManager(provider.getSigner(pisaAccount)),
-            store
-        );
-        const watcher = new Watcher(store, actionManager, blockCacher);
-        const player0Contract = channelContract.connect(provider.getSigner(player0));
+        const appointmentSubscriber = new AppointmentSubscriber(provider);
+        const watcher = new Watcher(appointmentSubscriber, store);
+        const responder = new EthereumResponderManager(provider.getSigner(pisaAccount));
+        const eventObserver = new EventObserver(responder, store);
+        ActionManager.initialise(new ActionStore(), responder, eventObserver, watcher);
 
+        const player0Contract = channelContract.connect(provider.getSigner(player0));
         await watcher.addAppointment(appointment);
 
         // 3. Trigger a dispute
         const tx = await player0Contract.triggerDispute();
         await tx.wait();
-        blockCacher.stop();
+
         await wait(2000);
     }).timeout(3000);
 });
