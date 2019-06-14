@@ -13,6 +13,7 @@ export interface ReadOnlyBlockCache {
     getBlockStub(blockHash: string): IBlockStub | null;
     hasBlock(blockHash: string): boolean;
     getConfirmations(headBlockHash: string, txHash: string): number;
+    ancestry(initialBlockHash: string): IterableIterator<IBlockStub>;
     findAncestor(initialBlockHash: string, predicate: (block: IBlockStub) => boolean): IBlockStub | null;
     getOldestAncestorInCache(blockHash: string): IBlockStub;
 }
@@ -193,7 +194,7 @@ export class BlockCache implements ReadOnlyBlockCache {
      * Iterator over all the blocks in the ancestry of the block with hash `initialBlockHash` (inclusive).
      * @param initialBlockHash
      */
-    private *ancestry(initialBlockHash: string): IterableIterator<IBlockStub> {
+    public *ancestry(initialBlockHash: string): IterableIterator<IBlockStub> {
         let curBlock = this.getBlockStub(initialBlockHash);
         while (curBlock !== null) {
             yield curBlock;
