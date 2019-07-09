@@ -81,6 +81,8 @@ export class BlockProcessor<T extends IBlockStub> extends StartStopService {
      */
     public static readonly REORG_EVENT = "reorg";
 
+    public static readonly NEW_BLOCK = "new_block";
+
     constructor(
         private provider: ethers.providers.BaseProvider,
         blockFactory: BlockFactory<T>,
@@ -142,7 +144,6 @@ export class BlockProcessor<T extends IBlockStub> extends StartStopService {
     private async processBlockNumber(blockNumber: number) {
         try {
             const observedBlock = await this.getBlock(blockNumber);
-
             this.lastBlockHashReceived = observedBlock.hash;
 
             const blocksToAdd = [observedBlock]; // blocks to add, in reverse order
@@ -163,6 +164,9 @@ export class BlockProcessor<T extends IBlockStub> extends StartStopService {
             // populate fetched blocks into cache, starting from the deepest
             for (const block of blocksToAdd) {
                 this.mBlockCache.addBlock(block);
+
+                // emit this new block for processing
+                this.emit(BlockProcessor.NEW_BLOCK, block);
             }
 
             // is the observed block still the last block received (or the first block during startup)?
