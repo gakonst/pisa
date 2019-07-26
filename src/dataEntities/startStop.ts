@@ -34,7 +34,7 @@ export abstract class StartStopService extends EventEmitter {
 
     protected callsLog : string[] = [];
     protected constructor(protected readonly name: string) {
-        super();
+        super(); 
 
         let instance = this;
 
@@ -93,7 +93,7 @@ export abstract class StartStopService extends EventEmitter {
                     return target[prop];
 
                 if (prop==='startInternal' || prop==='stopInternal')
-                    return asProtectedMethod (target, prop, receiver);
+                    return asProtectedMethod (target, prop, receivegitr);
 
                 // NB check if the second test is shortcircuited - test >0 is correct.
                 if (instance.mStarted || (instance.suppressNotStartedError >0) )

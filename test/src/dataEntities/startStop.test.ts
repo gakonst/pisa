@@ -82,7 +82,7 @@ describe("StartStop", () => {
 
         // stop twice
         await testService.stop();
-        await testService.stop();
+        await testService.stop(); 
 
         //the block event was only subscribed to once
         verify(spiedService.startInternal()).once();
