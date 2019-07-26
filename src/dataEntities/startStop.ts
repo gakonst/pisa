@@ -34,7 +34,7 @@ export abstract class StartStopService extends EventEmitter {
 
     protected callsLog : string[] = [];
     protected constructor(protected readonly name: string) {
-        super(); 
+        super();
 
         let instance = this;
 
@@ -42,7 +42,7 @@ export abstract class StartStopService extends EventEmitter {
             let message : string = `Attempt was: ${instance.constructor.name}.${prop}`;
             message += `\nstart states are: .mStarted: ${instance.mStarted}, called internally: ${instance.suppressNotStartedError>1 ? instance.suppressNotStartedError : !!instance.suppressNotStartedError}`
             message += (instance.callsLog.length>1) ?
-                `\nPrevious call chain on instance was: ${instance.callsLog.join('; ')}`
+                `\nPrevious get chain on instance was: ${instance.callsLog.join('; ')}`
                 : `\nNo previous calls on this instance` ;
             if (instance.callsLog.indexOf('start') ===-1)
                 message += `\n!! Cannot find any previous call to start !!`;
@@ -56,7 +56,7 @@ export abstract class StartStopService extends EventEmitter {
         * construct (= constructor) ; startInternal; stopInternal; start; stop
         * They, and their internals, can use public methods without start having yet been called.
         */
-        function asProtectedMethod (target: any, prop: string, receiver: any) {
+        function asProtectedMethod (target: any, prop: string) {
             return function (...args: any[]) {
                 instance.suppressNotStartedError++;
                 // Remove this - it's not an error, it's just to show that the flag incremented case is reachable
@@ -72,11 +72,11 @@ export abstract class StartStopService extends EventEmitter {
         }
 
         let proxyHandler = {
-            construct (target: any, prop: string, receiver: any) {
-                throw new Error ('Is this code /ever/ reached? (construct)')
+            construct (target: any, prop: string) {
+                throw new Error ('Should not have reached here! (startStopService.construct)')
                 // (apparently not :/ )
                 // Maybe it only would be if 'new StartStopService()' were to be instantiated, rather than children...
-                return asProtectedMethod (target, prop, receiver) ();
+                return asProtectedMethod (target, prop) ();
             },
 
             /**
@@ -85,7 +85,7 @@ export abstract class StartStopService extends EventEmitter {
             * If method called is a public one, return the unmodified function as normal only if
             * that flag is set or service is started - else error.
             **/
-            get (target: any, prop: string, receiver: any) {
+            get (target: any, prop: string) {
                 instance.callsLog.push (instance.suppressNotStartedError? `(prop(${instance.suppressNotStartedError}))` : prop);
 
                 // Do not intercept these
@@ -93,7 +93,7 @@ export abstract class StartStopService extends EventEmitter {
                     return target[prop];
 
                 if (prop==='startInternal' || prop==='stopInternal')
-                    return asProtectedMethod (target, prop, receivegitr);
+                    return asProtectedMethod (target, prop);
 
                 // NB check if the second test is shortcircuited - test >0 is correct.
                 if (instance.mStarted || (instance.suppressNotStartedError >0) )
