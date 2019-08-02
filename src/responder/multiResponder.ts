@@ -92,6 +92,7 @@ export class MultiResponder extends StartStopService {
                 new BigNumber(0),
                 new BigNumber(appointment.gas)
             );
+
             const idealGas = await this.gasEstimator.estimate(appointment);
             const request = new GasQueueItemRequest(txIdentifier, idealGas, appointment);
             logger.info(request, `Enqueueing request for ${appointment.id}.`);
@@ -99,6 +100,7 @@ export class MultiResponder extends StartStopService {
             // add the queue item to the queue, since the queue is ordered this may mean
             // that we need to replace some transactions on the network. Find those and
             // broadcast them
+            //PROBLEM HERE
             const replacedQueue = this.mQueue.add(request);
             const replacedTransactions = replacedQueue.difference(this.mQueue);
             this.mQueue = replacedQueue;
