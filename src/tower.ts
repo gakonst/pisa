@@ -3,6 +3,7 @@ import { ethers } from "ethers";
 import { SignedAppointment, IAppointment, Appointment, PublicDataValidationError } from "./dataEntities";
 import { AppointmentMode } from "./dataEntities/appointment";
 import { MultiResponder } from "./responder";
+import logger from "./logger";
 
 /**
  * A PISA tower, configured to watch for specified appointment types
@@ -21,19 +22,21 @@ export class PisaTower {
      */
     public async addAppointment(obj: any): Promise<SignedAppointment> {
         if (!obj) throw new PublicDataValidationError("Json request body empty.");
-        const appointment = Appointment.validate(obj);
+        const appointment = Appointment.parse(obj);
+        // check the appointment is valid
+        appointment.validate();
 
         // is this a relay transaction, if so, add it to the responder.
         // if not, add it to the watcher
         if (appointment.mode === AppointmentMode.Relay) {
-            this.multiResponder.startResponse(appointment);
-        }
-        else {
+            await this.multiResponder.startResponse(appointment);
+        } else {
             // add this to the store so that other components can pick up on it
             const currentAppointment = this.store.appointmentsByLocator.get(appointment.locator);
-            if (!currentAppointment || currentAppointment.jobId >= appointment.jobId) {
+            if (!currentAppointment || appointment.jobId > currentAppointment.jobId) {   
+                
                 await this.store.addOrUpdateByLocator(appointment);
-            } else throw new PublicDataValidationError(`Job id too low. Should be greater than ${appointment.jobId}.`);
+            } else throw new PublicDataValidationError(`Appointment already exists and job id too low. Should be greater than ${appointment.jobId}.`); // prettier-ignore
         }
 
         const signature = await this.appointmentSigner.signAppointment(appointment);
@@ -50,7 +53,7 @@ export abstract class EthereumAppointmentSigner {
      *
      * @param appointment
      */
-    public abstract async signAppointment(appointment: IAppointment): Promise<string>;
+    public abstract async signAppointment(appointment: Appointment): Promise<string>;
 }
 
 /**
